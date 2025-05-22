@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Place Your Order</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Light gray background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 1rem; /* Rounded corners */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            max-width: 28rem; /* Max width for readability */
+            width: 100%;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #374151; /* Darker text for labels */
+        }
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #d1d5db; /* Light gray border */
+            border-radius: 0.5rem; /* Slightly rounded input fields */
+            font-size: 1rem;
+            color: #4b5563; /* Medium gray text */
+            transition: border-color 0.2s ease-in-out;
+        }
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #2563eb; /* Blue border on focus */
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2); /* Light blue shadow on focus */
+        }
+        .submit-button {
+            background-color: #2563eb; /* Blue button */
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+            width: 100%;
+        }
+        .submit-button:hover {
+            background-color: #1d4ed8; /* Darker blue on hover */
+            transform: translateY(-1px); /* Slight lift on hover */
+        }
+        .submit-button:disabled {
+            background-color: #9ca3af; /* Gray when disabled */
+            cursor: not-allowed;
+        }
+        .message-box {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+            text-align: center;
+            font-weight: 500;
+        }
+        .message-box.success {
+            background-color: #d1fae5; /* Light green for success */
+            color: #065f46; /* Dark green text */
+        }
+        .message-box.error {
+            background-color: #fee2e2; /* Light red for error */
+            color: #991b1b; /* Dark red text */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Place Your Order</h1>
+        <form id="orderForm" class="space-y-4">
+            <div class="form-group">
+                <label for="customerName">Your Name:</label>
+                <input type="text" id="customerName" name="customerName" placeholder="John Doe" required>
+            </div>
+            <div class="form-group">
+                <label for="customerEmail">Your Email:</label>
+                <input type="email" id="customerEmail" name="customerEmail" placeholder="john.doe@example.com" required>
+            </div>
+            <div class="form-group">
+                <label for="product">Product/Service:</label>
+                <select id="product" name="product" required>
+                    <option value="">Select a product</option>
+                    <option value="Product A">Product A</option>
+                    <option value="Product B">Product B</option>
+                    <option value="Service X">Service X</option>
+                    <option value="Custom Order">Custom Order</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="quantity">Quantity:</label>
+                <input type="number" id="quantity" name="quantity" min="1" value="1" required>
+            </div>
+            <div class="form-group">
+                <label for="notes">Special Instructions/Notes:</label>
+                <textarea id="notes" name="notes" rows="4" placeholder="Any specific details or requests?"></textarea>
+            </div>
+            <button type="submit" class="submit-button" id="submitButton">Submit Order</button>
+            <div id="messageBox" class="message-box hidden"></div>
+        </form>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase configuration and initialization
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // Get the app ID for Firestore collection path
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        const orderForm = document.getElementById('orderForm');
+        const submitButton = document.getElementById('submitButton');
+        const messageBox = document.getElementById('messageBox');
+
+        // Sign in anonymously to allow writing to Firestore
+        async function authenticateAndSubmit(event) {
+            event.preventDefault(); // Prevent default form submission
+
+            submitButton.disabled = true;
+            messageBox.classList.add('hidden'); // Hide previous messages
+
+            try {
+                // Sign in anonymously if not already signed in
+                if (!auth.currentUser) {
+                    await signInAnonymously(auth);
+                    console.log("Signed in anonymously for order submission.");
+                }
+
+                const customerName = document.getElementById('customerName').value;
+                const customerEmail = document.getElementById('customerEmail').value;
+                const product = document.getElementById('product').value;
+                const quantity = parseInt(document.getElementById('quantity').value, 10);
+                const notes = document.getElementById('notes').value;
+
+                // Basic validation
+                if (!customerName || !customerEmail || !product || quantity < 1) {
+                    showMessage('Please fill in all required fields correctly.', 'error');
+                    submitButton.disabled = false;
+                    return;
+                }
+
+                // Add order to Firestore
+                const ordersCollectionRef = collection(db, `artifacts/${appId}/public/data/orders`);
+                await addDoc(ordersCollectionRef, {
+                    customerName: customerName,
+                    customerEmail: customerEmail,
+                    product: product,
+                    quantity: quantity,
+                    notes: notes,
+                    timestamp: serverTimestamp(), // Use server timestamp for consistency
+                    status: 'pending' // Initial status
+                });
+
+                showMessage('Your order has been placed successfully!', 'success');
+                orderForm.reset(); // Clear the form
+            } catch (error) {
+                console.error("Error submitting order:", error);
+                showMessage(`Failed to place order. Please try again. Error: ${error.message}`, 'error');
+            } finally {
+                submitButton.disabled = false;
+            }
+        }
+
+        // Function to display messages
+        function showMessage(message, type) {
+            messageBox.textContent = message;
+            messageBox.className = `message-box ${type}`; // Apply success or error class
+            messageBox.classList.remove('hidden');
+        }
+
+        // Attach event listener to the form
+        orderForm.addEventListener('submit', authenticateAndSubmit);
+    </script>
+</body>
+</html>
